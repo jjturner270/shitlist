@@ -1,0 +1,18 @@
+{
+  "team": "Product Team",
+  "tasks": [
+    {
+      "title": "set up the shitlist",
+      "description": "",
+      "priority": "P0",
+      "owner": "Jon",
+      "status": "READY",
+      "blockedBy": "",
+      "doneWhen": "",
+      "links": [],
+      "updatedAt": "2026-08-28T02:53:42.023Z",
+      "id": "001",
+      "createdAt": "2026-08-28T02:53:42.023Z"
+    }
+  ]
+}
