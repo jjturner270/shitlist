@@ -1,0 +1,25 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: shitlist
+      POSTGRES_PASSWORD: shitlist
+      POSTGRES_DB: shitlist
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  app:
+    build: .
+    ports:
+      - "10000:10000"
+    environment:
+      DATABASE_URL: postgres://shitlist:shitlist@db:5432/shitlist
+      SESSION_SECRET: change-me-in-production
+      PORT: "10000"
+    depends_on:
+      - db
+
+volumes:
+  pgdata:

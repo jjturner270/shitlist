@@ -9,3 +9,15 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: shitlist-db
+          property: connectionString
+
+databases:
+  - name: shitlist-db
+    plan: free
+    databaseName: shitlist
+    user: shitlist

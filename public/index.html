@@ -8,7 +8,52 @@
   <link rel="stylesheet" href="/app.css" />
 </head>
 <body>
-  <div class="shell">
+  <div id="authOverlay" class="auth-overlay">
+    <div class="auth-box">
+      <div class="auth-brand">
+        <span class="brand-mark">■</span>
+        <span class="brand-name">SHITLIST</span>
+      </div>
+      <form id="loginForm" class="auth-form">
+        <h3>Sign in</h3>
+        <label>
+          <span>Email</span>
+          <input name="email" type="email" required />
+        </label>
+        <label>
+          <span>Password</span>
+          <input name="password" type="password" required />
+        </label>
+        <div class="auth-error" id="authError"></div>
+        <div class="auth-actions">
+          <button type="submit">SIGN IN</button>
+          <button type="button" class="ghost" id="showRegister">Create account</button>
+        </div>
+      </form>
+      <form id="registerForm" class="auth-form" hidden>
+        <h3>Create account</h3>
+        <label>
+          <span>Email</span>
+          <input name="email" type="email" required />
+        </label>
+        <label>
+          <span>Name (optional)</span>
+          <input name="name" maxlength="80" />
+        </label>
+        <label>
+          <span>Password</span>
+          <input name="password" type="password" required />
+        </label>
+        <div class="auth-error" id="authError2"></div>
+        <div class="auth-actions">
+          <button type="submit">REGISTER</button>
+          <button type="button" class="ghost" id="showLogin">Back to sign in</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="shell" id="appShell" hidden>
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark">■</span>
@@ -16,7 +61,13 @@
         <span class="slash">/</span>
         <button id="teamName" class="team-name" title="Rename team">PRODUCT TEAM</button>
       </div>
-      <div class="summary" id="summary"></div>
+      <div class="topbar-right">
+        <div class="summary" id="summary"></div>
+        <div class="user-area">
+          <span id="userName" class="user-name"></span>
+          <button id="logoutButton" class="key">LOGOUT</button>
+        </div>
+      </div>
     </header>
 
     <nav class="filters" id="filters" aria-label="Board filters"></nav>
@@ -38,12 +89,10 @@
           <div class="panel-title">BLOCKERS</div>
           <div id="blockers" class="stack muted"></div>
         </section>
-
         <section class="panel">
           <div class="panel-title">UNOWNED</div>
           <div id="unowned" class="stack muted"></div>
         </section>
-
         <section class="panel">
           <div class="panel-title">PULSE</div>
           <div id="pulse" class="pulse"></div>
@@ -65,14 +114,12 @@
           <span class="eyebrow" id="dialogId">NEW</span>
           <h2 id="dialogTitle">Add work</h2>
         </div>
-        <button type="button" class="icon-button" id="closeDialog" aria-label="Close">×</button>
+        <button type="button" class="icon-button" id="closeDialog" aria-label="Close">x</button>
       </div>
-
       <label>
         <span>Title</span>
         <input name="title" required maxlength="180" />
       </label>
-
       <div class="grid-two">
         <label>
           <span>Priority</span>
@@ -94,27 +141,22 @@
           </select>
         </label>
       </div>
-
       <label>
         <span>Owner</span>
         <input name="owner" maxlength="80" placeholder="leave blank if unowned" />
       </label>
-
       <label>
         <span>Description</span>
         <textarea name="description" rows="5"></textarea>
       </label>
-
       <label>
         <span>Done when</span>
         <textarea name="doneWhen" rows="3" placeholder="What has to be true for this to be done?"></textarea>
       </label>
-
       <label id="blockedByWrap">
         <span>Blocked by</span>
         <input name="blockedBy" maxlength="500" />
       </label>
-
       <div class="dialog-actions">
         <button type="button" class="danger ghost" id="deleteTask">DELETE</button>
         <span class="spacer"></span>
