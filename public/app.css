@@ -79,6 +79,28 @@ button {
 }
 .team-name:hover { color: var(--text); }
 
+.team-switcher {
+  border: 1px solid var(--line-soft);
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 11px;
+  padding: 3px 6px;
+  max-width: 180px;
+  text-transform: uppercase;
+}
+
+.invite-key {
+  color: var(--warn);
+  font-size: 11px;
+  cursor: pointer;
+  border: 1px solid rgba(255,209,102,.3);
+  padding: 3px 6px;
+}
+
+.invite-key:hover {
+  background: var(--panel-2);
+}
+
 .summary {
   color: var(--muted);
   font-size: 12px;
