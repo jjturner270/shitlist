@@ -18,6 +18,19 @@ export async function query(text, params) {
   return pool.query(text, params);
 }
 
+export async function waitForDb(maxAttempts = 30, delayMs = 1000) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await pool.query("SELECT 1");
+      return;
+    } catch (err) {
+      if (attempt === maxAttempts) throw err;
+      console.log(`db not ready (attempt ${attempt}/${maxAttempts}), retrying in ${delayMs}ms...`);
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+}
+
 export async function runMigrations() {
   const dir = path.join(__dirname, "migrations");
   const files = fs.readdirSync(dir).sort();

@@ -249,6 +249,11 @@ button {
 .stack .item {
   border-left: 2px solid var(--line);
   padding-left: 9px;
+  cursor: pointer;
+}
+
+.stack .item:hover {
+  background: #1a1f22;
 }
 
 .stack .item.blocked {
@@ -284,6 +289,23 @@ button {
 .metric {
   background: var(--panel);
   padding: 12px;
+}
+
+.metric {
+  cursor: pointer;
+}
+
+.metric:hover {
+  background: var(--panel-2);
+}
+
+.metric.active {
+  background: var(--panel-2);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.metric.active strong {
+  color: var(--accent);
 }
 
 .metric strong {
@@ -647,4 +669,99 @@ textarea {
 .user-name {
   color: var(--muted);
   font-size: 12px;
+}
+
+/* Semantic actions */
+
+.task-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0 0 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.task-actions .act {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  padding: 7px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  cursor: pointer;
+}
+
+.task-actions .act:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.task-actions .act.done {
+  border-color: rgba(213,255,103,.4);
+  color: var(--accent);
+}
+
+.task-actions .act.block {
+  border-color: rgba(255,107,107,.4);
+  color: var(--danger);
+}
+
+.task-actions .act.take {
+  border-color: rgba(255,209,102,.4);
+  color: var(--warn);
+}
+
+/* Task history */
+
+.task-history {
+  border-top: 1px solid var(--line);
+  padding: 14px 18px 18px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.task-history .panel-title {
+  margin-bottom: 10px;
+}
+
+.history-list {
+  display: grid;
+  gap: 7px;
+  font-size: 12px;
+}
+
+.history-item {
+  display: grid;
+  grid-template-columns: 52px 90px 1fr;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.h-time {
+  color: var(--dim);
+  font-size: 11px;
+}
+
+.h-who {
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.h-what {
+  color: var(--muted);
+}
+
+/* Selected row */
+
+.task-row.selected {
+  background: #1a1f22;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.task-row.selected .task-title {
+  color: var(--accent);
 }

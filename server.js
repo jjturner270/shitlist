@@ -4,7 +4,7 @@ import connectPgSimple from "connect-pg-simple";
 import bcrypt from "bcryptjs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { pool, query, runMigrations } from "./db.js";
+import { pool, query, runMigrations, waitForDb, closePool } from "./db.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,8 +12,12 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 10000;
 const SESSION_SECRET = process.env.SESSION_SECRET || "shitlist-dev-secret-change-in-production";
+const IS_PROD = process.env.NODE_ENV === "production";
+const COOKIE_SECURE = process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE === "true" : IS_PROD;
 
 const PgStore = connectPgSimple(session);
+
+app.set("trust proxy", 1);
 
 app.use(express.json({ limit: "256kb" }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -23,8 +27,31 @@ app.use(session({
   secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true, sameSite: "lax" }
+  cookie: {
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    httpOnly: true,
+    sameSite: "lax",
+    secure: COOKIE_SECURE
+  }
 }));
+
+function rateLimit(ms, max) {
+  const hits = new Map();
+  return (req, res, next) => {
+    const key = req.ip || req.socket.remoteAddress;
+    const now = Date.now();
+    const window = hits.get(key);
+    if (!window || window.resetAt <= now) {
+      hits.set(key, { count: 1, resetAt: now + ms });
+      return next();
+    }
+    window.count += 1;
+    if (window.count > max) {
+      return res.status(429).json({ error: "too many attempts, slow down" });
+    }
+    next();
+  };
+}
 
 const PRIORITIES = ["P0", "P1", "P2", "P3"];
 const STATUSES = ["READY", "DOING", "BLOCKED", "REVIEW", "DONE"];
@@ -61,10 +88,18 @@ async function recordEvent(taskId, actorUserId, eventType, before, after) {
 
 // ─── Auth routes ────────────────
 
-app.post("/api/auth/register", async (req, res, next) => {
+const authLimiter = rateLimit(10 * 60 * 1000, 20);
+
+app.post("/api/auth/register", authLimiter, async (req, res, next) => {
   try {
     const { email, password, name } = req.body;
     if (!email || !password) return res.status(400).json({ error: "email and password required" });
+    if (typeof password !== "string" || password.length < 8) {
+      return res.status(400).json({ error: "password must be at least 8 characters" });
+    }
+    if (typeof email !== "string" || !email.includes("@") || email.length > 254) {
+      return res.status(400).json({ error: "invalid email" });
+    }
 
     const existing = await query("SELECT id FROM users WHERE email = $1", [email]);
     if (existing.rows.length) return res.status(409).json({ error: "email already registered" });
@@ -76,13 +111,15 @@ app.post("/api/auth/register", async (req, res, next) => {
       [email, hash, displayName]
     );
 
-    const team = await query("SELECT id, name, slug FROM teams ORDER BY created_at LIMIT 1");
-    if (team.rows.length) {
-      await query(
-        "INSERT INTO team_members (team_id, user_id, role) VALUES ($1,$2,'admin') ON CONFLICT DO NOTHING",
-        [team.rows[0].id, user.rows[0].id]
-      );
-    }
+    const slug = "team-" + user.rows[0].id.slice(0, 8);
+    const team = await query(
+      "INSERT INTO teams (name, slug) VALUES ($1,$2) RETURNING *",
+      [displayName + "'s Team", slug]
+    );
+    await query(
+      "INSERT INTO team_members (team_id, user_id, role) VALUES ($1,$2,'admin')",
+      [team.rows[0].id, user.rows[0].id]
+    );
 
     req.session.userId = user.rows[0].id;
     req.session.displayName = displayName;
@@ -92,7 +129,7 @@ app.post("/api/auth/register", async (req, res, next) => {
   }
 });
 
-app.post("/api/auth/login", async (req, res, next) => {
+app.post("/api/auth/login", authLimiter, async (req, res, next) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: "email and password required" });
@@ -432,8 +469,13 @@ app.get("/api/pulse", requireAuth, requireTeam, async (req, res, next) => {
 
 // ─── Health ──────────────
 
-app.get("/health", (_req, res) => {
-  res.json({ ok: true, service: "shitlist", time: new Date().toISOString() });
+app.get("/health", async (_req, res) => {
+  try {
+    await pool.query("SELECT 1");
+    res.json({ ok: true, service: "shitlist", db: "up", time: new Date().toISOString() });
+  } catch (err) {
+    res.status(503).json({ ok: false, service: "shitlist", db: "down", time: new Date().toISOString() });
+  }
 });
 
 // ─── Error handler ─────────
@@ -447,12 +489,31 @@ app.use((err, _req, res, _next) => {
 
 // ─── Boot ─────────────
 
+const REQUIRED_ENV = ["DATABASE_URL", "SESSION_SECRET"];
+const missing = REQUIRED_ENV.filter(k => !process.env[k]);
+if (missing.length && process.env.NODE_ENV === "production") {
+  console.error("boot failed: missing required environment variables: " + missing.join(", "));
+  process.exit(1);
+}
+
 try {
+  await waitForDb();
   await runMigrations();
-  app.listen(PORT, "0.0.0.0", () => {
+  const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`shitlist listening on :${PORT}`);
   });
+
+  const shutdown = () => {
+    console.log("shutting down...");
+    server.close(async () => {
+      try { await closePool(); } catch {}
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(1), 8000).unref();
+  };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 } catch (err) {
-  console.error("boot failed", err);
+  console.error("boot failed:", err.message || err);
   process.exit(1);
 }

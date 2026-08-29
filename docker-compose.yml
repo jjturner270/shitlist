@@ -9,6 +9,11 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shitlist -d shitlist"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
 
   app:
     build: .
@@ -17,9 +22,11 @@ services:
     environment:
       DATABASE_URL: postgres://shitlist:shitlist@db:5432/shitlist
       SESSION_SECRET: change-me-in-production
+      COOKIE_SECURE: "false"
       PORT: "10000"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
 volumes:
   pgdata:

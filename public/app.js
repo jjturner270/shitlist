@@ -2,7 +2,8 @@ const state = {
   board: { team: "", tasks: [] },
   filter: "ALL",
   editingId: null,
-  user: null
+  user: null,
+  selectedId: null
 };
 
 const els = {
@@ -32,7 +33,10 @@ const els = {
   closeDialog: document.querySelector("#closeDialog"),
   cancelTask: document.querySelector("#cancelTask"),
   deleteTask: document.querySelector("#deleteTask"),
-  blockedByWrap: document.querySelector("#blockedByWrap")
+  blockedByWrap: document.querySelector("#blockedByWrap"),
+  taskActions: document.querySelector("#taskActions"),
+  taskHistory: document.querySelector("#taskHistory"),
+  historyList: document.querySelector("#historyList")
 };
 
 const PRIORITY_ORDER = { P0: 0, P1: 1, P2: 2, P3: 3 };
@@ -181,11 +185,13 @@ function visibleTasks() {
   if (state.filter === "UNOWNED") return tasks.filter(t => !t.owner && t.status !== "DONE");
   if (state.filter === "BLOCKED") return tasks.filter(t => t.status === "BLOCKED");
   if (state.filter === "DONE") return tasks.filter(t => t.status === "DONE");
+  if (state.filter === "P0") return tasks.filter(t => t.priority === "P0");
   return tasks.filter(t => t.owner === state.filter);
 }
 
 function renderFilters() {
-  const options = ["ALL", ...owners(state.board.tasks), "UNOWNED", "BLOCKED", "DONE"];
+  const hasP0 = state.board.tasks.some(t => t.priority === "P0");
+  const options = ["ALL", ...(hasP0 ? ["P0"] : []), ...owners(state.board.tasks), "UNOWNED", "BLOCKED", "DONE"];
   els.filters.innerHTML = options.map(name =>
     '<button class="filter ' + (state.filter === name ? "active" : "") + '" data-filter="' + esc(name) + '">' + esc(name) + '</button>'
   ).join("");
@@ -204,7 +210,7 @@ function renderRows() {
     return;
   }
   els.taskRows.innerHTML = tasks.map(task =>
-    '<div class="row task-row ' + (task.status === "DONE" ? "done" : "") + '" data-id="' + esc(task.id) + '">' +
+    '<div class="row task-row ' + (task.status === "DONE" ? "done" : "") + (task.id === state.selectedId ? " selected" : "") + '" data-id="' + esc(task.id) + '">' +
       '<div class="priority ' + task.priority.toLowerCase() + '">' + esc(task.priority) + '</div>' +
       '<div>' +
         '<div class="task-title">' + esc(task.title) + '</div>' +
@@ -216,7 +222,10 @@ function renderRows() {
     '</div>'
   ).join("");
   els.taskRows.querySelectorAll(".task-row").forEach(row => {
-    row.addEventListener("click", () => openTask(row.dataset.id));
+    row.addEventListener("click", () => {
+      state.selectedId = row.dataset.id;
+      openTask(row.dataset.id);
+    });
   });
 }
 
@@ -224,22 +233,34 @@ function renderSide() {
   const blockers = sortedTasks(state.board.tasks.filter(t => t.status === "BLOCKED"));
   els.blockers.innerHTML = blockers.length
     ? blockers.map(t =>
-        '<div class="item blocked">' +
+        '<div class="item blocked" data-id="' + esc(t.id) + '" role="button" tabindex="0">' +
           '<div class="name">' + esc(t.owner || "UNOWNED") + ' -> ' + esc(t.title) + '</div>' +
           '<div class="detail">' + esc(t.blockedBy || "blocked, apparently") + '</div>' +
         '</div>'
       ).join("")
     : '<div>none</div>';
+  els.blockers.querySelectorAll(".item[data-id]").forEach(item => {
+    item.addEventListener("click", () => openTask(item.dataset.id));
+    item.addEventListener("keydown", e => {
+      if (e.key === "Enter") openTask(item.dataset.id);
+    });
+  });
 
   const unowned = sortedTasks(state.board.tasks.filter(t => !t.owner && t.status !== "DONE"));
   els.unowned.innerHTML = unowned.length
     ? unowned.map(t =>
-        '<div class="item unowned">' +
+        '<div class="item unowned" data-id="' + esc(t.id) + '" role="button" tabindex="0">' +
           '<div class="name">' + esc(t.priority) + ' -> ' + esc(t.title) + '</div>' +
           '<div class="detail">needs an owner</div>' +
         '</div>'
       ).join("")
     : '<div>none</div>';
+  els.unowned.querySelectorAll(".item[data-id]").forEach(item => {
+    item.addEventListener("click", () => openTask(item.dataset.id));
+    item.addEventListener("keydown", e => {
+      if (e.key === "Enter") openTask(item.dataset.id);
+    });
+  });
 
   const open = state.board.tasks.filter(t => t.status !== "DONE");
   const critical = open.filter(t => t.priority === "P0").length;
@@ -247,11 +268,27 @@ function renderSide() {
     return t.status === "DONE" && Date.now() - new Date(t.updatedAt).getTime() <= 7 * 86400000;
   }).length;
 
-  els.pulse.innerHTML =
-    '<div class="metric"><strong>' + critical + '</strong><span>critical</span></div>' +
-    '<div class="metric"><strong>' + blockers.length + '</strong><span>blocked</span></div>' +
-    '<div class="metric"><strong>' + unowned.length + '</strong><span>unowned</span></div>' +
-    '<div class="metric"><strong>' + done7d + '</strong><span>done / 7d</span></div>';
+  const pulseItems = [
+    { label: "critical", value: critical, filter: "P0" },
+    { label: "blocked", value: blockers.length, filter: "BLOCKED" },
+    { label: "unowned", value: unowned.length, filter: "UNOWNED" },
+    { label: "done / 7d", value: done7d, filter: "DONE" }
+  ];
+  els.pulse.innerHTML = pulseItems.map(p =>
+    '<div class="metric' + (state.filter === p.filter ? " active" : "") + '" data-filter="' + p.filter + '" role="button" tabindex="0">' +
+      '<strong>' + p.value + '</strong><span>' + p.label + '</span>' +
+    '</div>'
+  ).join("");
+  els.pulse.querySelectorAll(".metric").forEach(m => {
+    const act = () => {
+      state.filter = m.dataset.filter;
+      render();
+    };
+    m.addEventListener("click", act);
+    m.addEventListener("keydown", e => {
+      if (e.key === "Enter") act();
+    });
+  });
 
   els.summary.innerHTML =
     '<strong>' + open.length + '</strong> open &nbsp;' +
@@ -294,8 +331,7 @@ function setForm(task) {
 }
 
 function toggleBlockedField() {
-  const blocked = els.form.elements.status.value === "BLOCKED";
-  els.blockedByWrap.hidden = !blocked;
+  els.blockedByWrap.hidden = false;
 }
 
 function openCreate(title) {
@@ -303,6 +339,8 @@ function openCreate(title) {
   els.dialogId.textContent = "NEW";
   els.dialogTitle.textContent = "Add work";
   els.deleteTask.hidden = true;
+  els.taskActions.hidden = true;
+  els.taskHistory.hidden = true;
   setForm({ title: title || "" });
   els.dialog.showModal();
   queueMicrotask(() => {
@@ -311,15 +349,109 @@ function openCreate(title) {
   });
 }
 
+const ACTION_DEFS = [
+  { act: "take", label: "TAKE", show: t => !t.owner && t.status !== "DONE" },
+  { act: "start", label: "START", show: t => t.owner && t.status === "READY" },
+  { act: "block", label: "BLOCK", show: t => t.status !== "BLOCKED" && t.status !== "DONE" },
+  { act: "review", label: "REVIEW", show: t => t.status === "DOING" },
+  { act: "done", label: "DONE", show: t => t.status !== "DONE" }
+];
+
+function renderActions(task) {
+  const visible = ACTION_DEFS.filter(d => d.show(task));
+  if (!visible.length) {
+    els.taskActions.hidden = true;
+    return;
+  }
+  els.taskActions.hidden = false;
+  els.taskActions.innerHTML = visible
+    .map(d => '<button type="button" class="act ' + d.act + '" data-act="' + d.act + '">' + d.label + '</button>')
+    .join("");
+  els.taskActions.querySelectorAll("button").forEach(btn => {
+    btn.addEventListener("click", () => runAction(btn.dataset.act, task));
+  });
+}
+
+async function runAction(act, task) {
+  const id = task.id;
+  let options = { method: "POST" };
+  try {
+    if (act === "take") {
+      options.body = JSON.stringify({ owner: state.user.display_name || state.user.email.split("@")[0] });
+    } else if (act === "block") {
+      const reason = prompt("Why is this blocked?", task.blockedBy || "");
+      if (reason === null) return;
+      if (!reason.trim()) { alert("A blocker needs a reason."); return; }
+      options.body = JSON.stringify({ reason: reason.trim() });
+    }
+    await api("/api/tasks/" + id + "/" + act, options);
+    await loadBoard();
+    const fresh = state.board.tasks.find(t => t.id === id);
+    if (fresh && els.dialog.open) {
+      setForm(fresh);
+      renderActions(fresh);
+      loadEvents(id);
+    }
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+const EVENT_LABELS = {
+  created: "created",
+  claimed: "took the task",
+  started: "started",
+  blocked: "blocked",
+  unblocked: "unblocked",
+  sent_to_review: "sent to review",
+  completed: "marked done",
+  edited: "edited",
+  priority_changed: "changed priority"
+};
+
+async function loadEvents(id) {
+  try {
+    const events = await api("/api/tasks/" + id + "/events");
+    if (!events || !events.length) {
+      els.taskHistory.hidden = true;
+      els.historyList.innerHTML = "";
+      return;
+    }
+    els.taskHistory.hidden = false;
+    els.historyList.innerHTML = events.map(e =>
+      '<div class="history-item">' +
+        '<span class="h-time">' + ago(e.created_at) + '</span>' +
+        '<span class="h-who">' + esc(e.actor_name || "someone") + '</span>' +
+        '<span class="h-what">' + esc(EVENT_LABELS[e.event_type] || e.event_type) + '</span>' +
+      '</div>'
+    ).join("");
+  } catch (err) {
+    els.taskHistory.hidden = true;
+  }
+}
+
+function ago(iso) {
+  const ms = Date.now() - new Date(iso).getTime();
+  const mins = Math.max(0, Math.floor(ms / 60000));
+  if (mins < 60) return mins + "m";
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return hours + "h";
+  return Math.floor(hours / 24) + "d";
+}
+
 function openTask(id) {
   const task = state.board.tasks.find(t => t.id === id);
   if (!task) return;
   state.editingId = id;
+  state.selectedId = id;
   els.dialogId.textContent = "#" + id;
   els.dialogTitle.textContent = task.title;
   els.deleteTask.hidden = false;
+  els.taskHistory.hidden = true;
   setForm(task);
+  renderActions(task);
   els.dialog.showModal();
+  loadEvents(id);
 }
 
 function closeDialog() {
@@ -374,7 +506,63 @@ async function renameTeam() {
 }
 
 els.form.addEventListener("submit", submitTask);
-els.form.elements.status.addEventListener("change", toggleBlockedField);
+els.form.elements.status.addEventListener("change", () => {
+  toggleBlockedField();
+  if (state.editingId) {
+    const t = state.board.tasks.find(x => x.id === state.editingId);
+    if (t) {
+      const draft = Object.assign({}, t, {
+        status: els.form.elements.status.value,
+        owner: els.form.elements.owner.value,
+        blockedBy: els.form.elements.status.value === "BLOCKED" ? els.form.elements.blockedBy.value : ""
+      });
+      renderActions(draft);
+    }
+  }
+});
+
+let blockDebounce = null;
+els.form.elements.blockedBy.addEventListener("input", event => {
+  const value = event.target.value.trim();
+
+  if (!state.editingId) {
+    if (value) els.form.elements.status.value = "BLOCKED";
+    return;
+  }
+
+  const t = state.board.tasks.find(x => x.id === state.editingId);
+  if (!t || t.status === "DONE") return;
+
+  if (value) {
+    els.form.elements.status.value = "BLOCKED";
+    toggleBlockedField();
+  }
+
+  clearTimeout(blockDebounce);
+  blockDebounce = setTimeout(() => {
+    const reason = event.target.value.trim();
+    if (!reason) return;
+    persistBlock(reason, t);
+  }, 400);
+});
+
+async function persistBlock(reason, task) {
+  try {
+    await api("/api/tasks/" + task.id + "/block", {
+      method: "POST",
+      body: JSON.stringify({ reason })
+    });
+    await loadBoard();
+    const fresh = state.board.tasks.find(x => x.id === task.id);
+    if (fresh && els.dialog.open) {
+      setForm(fresh);
+      renderActions(fresh);
+      loadEvents(task.id);
+    }
+  } catch (err) {
+    alert(err.message);
+  }
+}
 els.closeDialog.addEventListener("click", closeDialog);
 els.cancelTask.addEventListener("click", closeDialog);
 els.deleteTask.addEventListener("click", deleteTask);
@@ -382,6 +570,7 @@ els.teamName.addEventListener("click", renameTeam);
 
 els.quickAdd.addEventListener("keydown", event => {
   if (event.key === "Enter" && els.quickAdd.value.trim()) {
+    event.preventDefault();
     openCreate(els.quickAdd.value.trim());
     els.quickAdd.value = "";
   }
@@ -393,14 +582,66 @@ els.addButton.addEventListener("click", () => {
   els.quickAdd.value = "";
 });
 
+function orderedTaskIds() {
+  return sortedTasks(visibleTasks()).map(t => t.id);
+}
+
+function moveSelection(dir) {
+  const ids = orderedTaskIds();
+  if (!ids.length) return;
+  let idx = ids.indexOf(state.selectedId);
+  if (idx < 0) idx = dir > 0 ? -1 : ids.length;
+  const next = ids[Math.min(ids.length - 1, Math.max(0, idx + dir))];
+  state.selectedId = next;
+  renderRows();
+}
+
 document.addEventListener("keydown", event => {
+  const tag = document.activeElement?.tagName;
+  const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(tag);
+
   if (event.key === "/" && !els.dialog.open && document.activeElement !== els.quickAdd) {
     event.preventDefault();
     els.quickAdd.focus();
   }
-  if ((event.key || "").toLowerCase() === "n" && !els.dialog.open && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) {
+
+  if (els.dialog.open) {
+    if (typing) return;
+    const k = (event.key || "").toLowerCase();
+    if (k === "t" && state.editingId) {
+      const t = state.board.tasks.find(x => x.id === state.editingId);
+      if (t && !t.owner && t.status !== "DONE") { event.preventDefault(); runAction("take", t); }
+    } else if (k === "s" && state.editingId) {
+      const t = state.board.tasks.find(x => x.id === state.editingId);
+      if (t && t.owner && t.status === "READY") { event.preventDefault(); runAction("start", t); }
+    } else if (k === "b" && state.editingId) {
+      const t = state.board.tasks.find(x => x.id === state.editingId);
+      if (t && t.status !== "BLOCKED" && t.status !== "DONE") { event.preventDefault(); runAction("block", t); }
+    } else if (k === "r" && state.editingId) {
+      const t = state.board.tasks.find(x => x.id === state.editingId);
+      if (t && t.status === "DOING") { event.preventDefault(); runAction("review", t); }
+    } else if (k === "d" && state.editingId) {
+      const t = state.board.tasks.find(x => x.id === state.editingId);
+      if (t && t.status !== "DONE") { event.preventDefault(); runAction("done", t); }
+    }
+    return;
+  }
+
+  if (typing) return;
+
+  const key = (event.key || "").toLowerCase();
+  if (key === "n") {
     event.preventDefault();
     openCreate();
+  } else if (event.key === "j" || event.key === "J") {
+    event.preventDefault();
+    moveSelection(1);
+  } else if (event.key === "k" || event.key === "K") {
+    event.preventDefault();
+    moveSelection(-1);
+  } else if (event.key === "Enter" && state.selectedId) {
+    event.preventDefault();
+    openTask(state.selectedId);
   }
 });
 
