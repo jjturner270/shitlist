@@ -3,6 +3,7 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import bcrypt from "bcryptjs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { pool, query, runMigrations, waitForDb, closePool } from "./db.js";
 
@@ -56,6 +57,15 @@ function rateLimit(ms, max) {
 const PRIORITIES = ["P0", "P1", "P2", "P3"];
 const STATUSES = ["READY", "DOING", "BLOCKED", "REVIEW", "DONE"];
 
+const INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function genInviteKey() {
+  const rand = crypto.randomBytes(8);
+  let key = "";
+  for (let i = 0; i < 8; i++) key += INVITE_ALPHABET[rand[i] % INVITE_ALPHABET.length];
+  return key;
+}
+
 function requireAuth(req, res, next) {
   if (!req.session.userId) {
     return res.status(401).json({ error: "authentication required" });
@@ -65,10 +75,17 @@ function requireAuth(req, res, next) {
 
 async function requireTeam(req, res, next) {
   try {
-    const result = await query(
-      "SELECT t.* FROM teams t JOIN team_members tm ON tm.team_id = t.id WHERE tm.user_id = $1 ORDER BY t.created_at LIMIT 1",
-      [req.session.userId]
-    );
+    const user = await query("SELECT current_team_id FROM users WHERE id = $1", [req.session.userId]);
+    const currentId = user.rows[0]?.current_team_id;
+    const result = currentId
+      ? await query(
+          "SELECT t.* FROM teams t JOIN team_members tm ON tm.team_id = t.id AND tm.user_id = $1 WHERE t.id = $2",
+          [req.session.userId, currentId]
+        )
+      : await query(
+          "SELECT t.* FROM teams t JOIN team_members tm ON tm.team_id = t.id WHERE tm.user_id = $1 ORDER BY t.created_at LIMIT 1",
+          [req.session.userId]
+        );
     if (!result.rows.length) {
       return res.status(404).json({ error: "no team found" });
     }
@@ -113,13 +130,14 @@ app.post("/api/auth/register", authLimiter, async (req, res, next) => {
 
     const slug = "team-" + user.rows[0].id.slice(0, 8);
     const team = await query(
-      "INSERT INTO teams (name, slug) VALUES ($1,$2) RETURNING *",
-      [displayName + "'s Team", slug]
+      "INSERT INTO teams (name, slug, invite_key) VALUES ($1,$2,$3) RETURNING *",
+      [displayName + "'s Team", slug, genInviteKey()]
     );
     await query(
       "INSERT INTO team_members (team_id, user_id, role) VALUES ($1,$2,'admin')",
       [team.rows[0].id, user.rows[0].id]
     );
+    await query("UPDATE users SET current_team_id = $1 WHERE id = $2", [team.rows[0].id, user.rows[0].id]);
 
     req.session.userId = user.rows[0].id;
     req.session.displayName = displayName;
@@ -175,15 +193,16 @@ app.post("/api/teams", requireAuth, async (req, res, next) => {
   try {
     const name = (req.body.name || "").trim().slice(0, 120);
     if (!name) return res.status(400).json({ error: "team name required" });
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "");
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") + "-" + crypto.randomBytes(3).toString("hex");
     const result = await query(
-      "INSERT INTO teams (name, slug) VALUES ($1,$2) RETURNING *",
-      [name, slug]
+      "INSERT INTO teams (name, slug, invite_key) VALUES ($1,$2,$3) RETURNING *",
+      [name, slug, genInviteKey()]
     );
     await query(
       "INSERT INTO team_members (team_id, user_id, role) VALUES ($1,$2,'admin')",
       [result.rows[0].id, req.session.userId]
     );
+    await query("UPDATE users SET current_team_id = $1 WHERE id = $2", [result.rows[0].id, req.session.userId]);
     res.status(201).json(result.rows[0]);
   } catch (err) {
     if (err.constraint?.includes("teams_slug_key")) {
@@ -195,11 +214,53 @@ app.post("/api/teams", requireAuth, async (req, res, next) => {
 
 app.get("/api/teams", requireAuth, async (req, res, next) => {
   try {
+    const user = await query("SELECT current_team_id FROM users WHERE id = $1", [req.session.userId]);
     const result = await query(
-      "SELECT t.* FROM teams t JOIN team_members tm ON tm.team_id = t.id WHERE tm.user_id = $1 ORDER BY t.name",
+      "SELECT t.id, t.name, t.slug, t.invite_key, tm.role FROM teams t JOIN team_members tm ON tm.team_id = t.id WHERE tm.user_id = $1 ORDER BY t.name",
       [req.session.userId]
     );
-    res.json(result.rows);
+    res.json({ teams: result.rows, current: user.rows[0]?.current_team_id || null });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/api/teams/join", requireAuth, async (req, res, next) => {
+  try {
+    const key = (req.body.key || "").trim().toUpperCase();
+    if (!key) return res.status(400).json({ error: "invite key required" });
+
+    const team = await query("SELECT * FROM teams WHERE invite_key = $1", [key]);
+    if (!team.rows.length) return res.status(404).json({ error: "no team found for that key" });
+
+    const already = await query(
+      "SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2",
+      [team.rows[0].id, req.session.userId]
+    );
+    if (!already.rows.length) {
+      await query(
+        "INSERT INTO team_members (team_id, user_id, role) VALUES ($1,$2,'member')",
+        [team.rows[0].id, req.session.userId]
+      );
+    }
+    await query("UPDATE users SET current_team_id = $1 WHERE id = $2", [team.rows[0].id, req.session.userId]);
+    res.json({ team: { id: team.rows[0].id, name: team.rows[0].name, slug: team.rows[0].slug } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/api/teams/switch", requireAuth, async (req, res, next) => {
+  try {
+    const teamId = req.body.team_id;
+    if (!teamId) return res.status(400).json({ error: "team_id required" });
+    const member = await query(
+      "SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2",
+      [teamId, req.session.userId]
+    );
+    if (!member.rows.length) return res.status(403).json({ error: "not a member of that team" });
+    await query("UPDATE users SET current_team_id = $1 WHERE id = $2", [teamId, req.session.userId]);
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }
@@ -215,6 +276,7 @@ app.get("/api/board", requireAuth, requireTeam, async (req, res, next) => {
     );
     res.json({
       team: req.team.name,
+      inviteKey: req.team.invite_key,
       tasks: tasks.rows.map(t => ({
         id: t.id,
         title: t.title,

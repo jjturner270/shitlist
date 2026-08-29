@@ -3,7 +3,9 @@ const state = {
   filter: "ALL",
   editingId: null,
   user: null,
-  selectedId: null
+  selectedId: null,
+  teams: [],
+  currentTeamId: null
 };
 
 const els = {
@@ -18,6 +20,9 @@ const els = {
   userName: document.querySelector("#userName"),
   logoutButton: document.querySelector("#logoutButton"),
   teamName: document.querySelector("#teamName"),
+  teamSwitcher: document.querySelector("#teamSwitcher"),
+  inviteKey: document.querySelector("#inviteKey"),
+  joinButton: document.querySelector("#joinButton"),
   summary: document.querySelector("#summary"),
   filters: document.querySelector("#filters"),
   taskRows: document.querySelector("#taskRows"),
@@ -141,7 +146,76 @@ function showApp() {
   els.authOverlay.hidden = true;
   els.appShell.hidden = false;
   els.userName.textContent = state.user.display_name || state.user.email;
+  loadTeams();
   loadBoard();
+}
+
+async function loadTeams() {
+  try {
+    const data = await api("/api/teams");
+    state.teams = data.teams || [];
+    state.currentTeamId = data.current || null;
+    renderTeamSwitcher();
+    renderInviteKey();
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+function renderTeamSwitcher() {
+  els.teamSwitcher.innerHTML = state.teams.map(t =>
+    '<option value="' + esc(t.id) + '"' + (t.id === state.currentTeamId ? " selected" : "") + '>' + esc(t.name) + '</option>'
+  ).join("");
+}
+
+function renderInviteKey() {
+  const current = state.teams.find(t => t.id === state.currentTeamId);
+  els.inviteKey.textContent = current ? "KEY " + current.invite_key : "KEY";
+  els.inviteKey.title = current ? "click to copy " + current.invite_key : "";
+}
+
+async function switchTeam(teamId) {
+  try {
+    await api("/api/teams/switch", {
+      method: "POST",
+      body: JSON.stringify({ team_id: teamId })
+    });
+    state.currentTeamId = teamId;
+    state.filter = "ALL";
+    await loadTeams();
+    await loadBoard();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function joinTeam() {
+  const key = prompt("Enter team invite key");
+  if (!key || !key.trim()) return;
+  try {
+    const data = await api("/api/teams/join", {
+      method: "POST",
+      body: JSON.stringify({ key: key.trim() })
+    });
+    state.currentTeamId = data.team.id;
+    state.filter = "ALL";
+    await loadTeams();
+    await loadBoard();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function copyInviteKey() {
+  const current = state.teams.find(t => t.id === state.currentTeamId);
+  if (!current) return;
+  try {
+    await navigator.clipboard.writeText(current.invite_key);
+    els.inviteKey.textContent = "COPIED";
+    setTimeout(() => renderInviteKey(), 1200);
+  } catch (err) {
+    alert("Invite key: " + current.invite_key);
+  }
 }
 
 function esc(value) {
@@ -567,6 +641,12 @@ els.closeDialog.addEventListener("click", closeDialog);
 els.cancelTask.addEventListener("click", closeDialog);
 els.deleteTask.addEventListener("click", deleteTask);
 els.teamName.addEventListener("click", renameTeam);
+
+els.teamSwitcher.addEventListener("change", event => {
+  if (event.target.value) switchTeam(event.target.value);
+});
+els.inviteKey.addEventListener("click", copyInviteKey);
+els.joinButton.addEventListener("click", joinTeam);
 
 els.quickAdd.addEventListener("keydown", event => {
   if (event.key === "Enter" && els.quickAdd.value.trim()) {
