@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { parse as parseCsv } from "csv-parse/sync";
 import { pool, query, runMigrations, waitForDb, closePool } from "./db.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -524,6 +525,104 @@ app.get("/api/pulse", requireAuth, requireTeam, async (req, res, next) => {
       }).length
     };
     res.json(pulse);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── Import ──────────────
+
+const JIRA_PRIORITY_MAP = {
+  highest: "P0", critical: "P0", blocker: "P0", p0: "P0", urgent: "P0", "1": "P0",
+  high: "P1", major: "P1", p1: "P1", "2": "P1",
+  medium: "P2", normal: "P2", p2: "P2", "3": "P2", default: "P2",
+  low: "P3", minor: "P3", p3: "P3", "4": "P3",
+  lowest: "P3", trivial: "P3", p4: "P3", p5: "P3", "5": "P3"
+};
+
+const JIRA_STATUS_MAP = {
+  done: "DONE", closed: "DONE", resolved: "DONE", complete: "DONE", completed: "DONE",
+  merged: "DONE", released: "DONE", fixed: "DONE",
+  blocked: "BLOCKED", block: "BLOCKED",
+  "in progress": "DOING", doing: "DOING", "in development": "DOING", "in dev": "DOING",
+  started: "DOING", implementing: "DOING", "in design": "DOING",
+  "in review": "REVIEW", review: "REVIEW", "in code review": "REVIEW", "code review": "REVIEW",
+  qa: "REVIEW", testing: "REVIEW", "in testing": "REVIEW", "awaiting review": "REVIEW",
+  "peer review": "REVIEW", "in qa": "REVIEW"
+};
+
+function mapPriority(value) {
+  const v = String(value || "").trim().toLowerCase();
+  return JIRA_PRIORITY_MAP[v] || "P2";
+}
+
+function mapStatus(value) {
+  const v = String(value || "").trim().toLowerCase();
+  return JIRA_STATUS_MAP[v] || "READY";
+}
+
+function findColumn(headers, ...names) {
+  const wanted = names.map(n => n.toLowerCase());
+  return headers.find(h => wanted.includes(h.trim().toLowerCase()));
+}
+
+app.post("/api/import/csv", requireAuth, requireTeam, async (req, res, next) => {
+  try {
+    const csv = req.body.csv;
+    if (typeof csv !== "string" || !csv.trim()) {
+      return res.status(400).json({ error: "csv is required" });
+    }
+    if (csv.length > 5 * 1024 * 1024) {
+      return res.status(400).json({ error: "csv too large (max 5MB)" });
+    }
+
+    let rows;
+    try {
+      rows = parseCsv(csv, { columns: true, skip_empty_lines: true, trim: true, relax_column_count: true });
+    } catch (err) {
+      return res.status(400).json({ error: "could not parse csv: " + err.message });
+    }
+    if (!rows.length) return res.status(400).json({ error: "csv has no data rows" });
+    if (rows.length > 2000) return res.status(400).json({ error: "csv too many rows (max 2000)" });
+
+    const headers = Object.keys(rows[0] || {});
+    const titleCol = findColumn(headers, "summary", "title", "name", "issue summary");
+    const descCol = findColumn(headers, "description", "details", "body");
+    const priCol = findColumn(headers, "priority");
+    const assigneeCol = findColumn(headers, "assignee", "owner", "owner name", "assignee name", "assignee display name");
+    const statusCol = findColumn(headers, "status", "state", "issue status");
+
+    if (!titleCol) {
+      return res.status(400).json({ error: "no summary/title column found (looked for: summary, title, name)" });
+    }
+
+    let imported = 0;
+    let skipped = 0;
+    const notes = [];
+
+    for (const row of rows) {
+      const title = String(row[titleCol] || "").trim().slice(0, 180);
+      if (!title) {
+        skipped++;
+        continue;
+      }
+
+      const priority = mapPriority(row[priCol]);
+      const status = mapStatus(row[statusCol]);
+      const owner = String(row[assigneeCol] || "").trim().slice(0, 80);
+      const description = String(row[descCol] || "").trim().slice(0, 4000);
+
+      const result = await query(
+        `INSERT INTO tasks (team_id, title, description, priority, owner, status, created_by_user_id, completed_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7, CASE WHEN $6 = 'DONE' THEN now() ELSE NULL END) RETURNING *`,
+        [req.team.id, title, description, priority, owner, status, req.session.userId]
+      );
+
+      await recordEvent(result.rows[0].id, req.session.userId, "created", null, result.rows[0]);
+      imported++;
+    }
+
+    res.status(201).json({ imported, skipped, notes });
   } catch (err) {
     next(err);
   }
