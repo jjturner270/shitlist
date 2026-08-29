@@ -116,6 +116,8 @@ POST   /api/tasks/:id/review
 POST   /api/tasks/:id/done
 
 GET    /api/tasks/:id/events
+
+POST   /api/import/csv         { "csv": "<jira csv text>" }
 ```
 
 Every endpoint is scoped to your team. You cannot read or mutate another team's work.
