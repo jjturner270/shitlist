@@ -23,6 +23,7 @@ const els = {
   teamSwitcher: document.querySelector("#teamSwitcher"),
   inviteKey: document.querySelector("#inviteKey"),
   joinButton: document.querySelector("#joinButton"),
+  importButton: document.querySelector("#importButton"),
   summary: document.querySelector("#summary"),
   filters: document.querySelector("#filters"),
   taskRows: document.querySelector("#taskRows"),
@@ -216,6 +217,40 @@ async function copyInviteKey() {
   } catch (err) {
     alert("Invite key: " + current.invite_key);
   }
+}
+
+let importInput = null;
+
+function importCsv() {
+  if (!importInput) {
+    importInput = document.createElement("input");
+    importInput.type = "file";
+    importInput.accept = ".csv,text/csv";
+    importInput.addEventListener("change", async () => {
+      const file = importInput.files && importInput.files[0];
+      importInput.value = "";
+      if (!file) return;
+      if (file.size > 5 * 1024 * 1024) {
+        alert("File too large (max 5MB)");
+        return;
+      }
+      try {
+        const text = await file.text();
+        const result = await api("/api/import/csv", {
+          method: "POST",
+          body: JSON.stringify({ csv: text })
+        });
+        state.filter = "ALL";
+        await loadBoard();
+        const msg = "imported " + result.imported + " task" + (result.imported === 1 ? "" : "s") +
+          (result.skipped ? ", skipped " + result.skipped + " rows without a title" : "");
+        alert(msg);
+      } catch (err) {
+        alert("import failed: " + err.message);
+      }
+    });
+  }
+  importInput.click();
 }
 
 function esc(value) {
@@ -647,6 +682,7 @@ els.teamSwitcher.addEventListener("change", event => {
 });
 els.inviteKey.addEventListener("click", copyInviteKey);
 els.joinButton.addEventListener("click", joinTeam);
+els.importButton.addEventListener("click", importCsv);
 
 els.quickAdd.addEventListener("keydown", event => {
   if (event.key === "Enter" && els.quickAdd.value.trim()) {
