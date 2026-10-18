@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "postCommit": true,
+    "postMerge": true,
+    "prePush": "advisory"
+  },
+  "analysis": {
+    "mode": "significant-changes",
+    "significanceThreshold": 2
+  },
+  "enforcement": false
+}

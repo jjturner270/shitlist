@@ -1,0 +1,41 @@
+{
+  "allowRead": true,
+  "allowWrite": true,
+  "allowedWriteGlobs": [
+    "src/**",
+    "test/**",
+    "tests/**",
+    "*.json",
+    "*.md",
+    "*.ts",
+    "*.tsx",
+    "*.js",
+    "*.jsx"
+  ],
+  "deniedWriteGlobs": [
+    ".git/**",
+    "node_modules/**",
+    ".env",
+    ".env.*"
+  ],
+  "allowedCommands": [
+    "npm test",
+    "npm run test",
+    "npm run lint",
+    "npm run build",
+    "npm run typecheck",
+    "npx tsc --noEmit",
+    "pnpm test",
+    "pnpm run lint",
+    "pnpm run build",
+    "yarn test",
+    "yarn lint",
+    "yarn build",
+    "git status --short",
+    "git diff --",
+    "git diff"
+  ],
+  "denyShellOperators": true,
+  "maxModelSteps": 30,
+  "maxFileBytes": 200000
+}

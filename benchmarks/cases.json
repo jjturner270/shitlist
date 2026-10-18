@@ -1,0 +1,241 @@
+[
+  {
+    "id": "health-endpoint",
+    "repo": "/Users/jon/dev/shitlist",
+    "intent": "Add a health endpoint that returns 200 when the app and database are healthy.",
+    "questions": {
+      "fits_existing_architecture": {
+        "instructions": "Does this requested change fit the repository's existing Express and PostgreSQL architecture?",
+        "expected": true
+      },
+      "requires_database_awareness": {
+        "instructions": "Should this health endpoint account for PostgreSQL availability rather than only HTTP process availability?",
+        "expected": true
+      },
+      "requires_authentication": {
+        "instructions": "Should the health endpoint require a logged-in user or team membership?",
+        "expected": false
+      }
+    }
+  },
+
+  {
+    "id": "remove-task-auth",
+    "repo": "/Users/jon/dev/shitlist",
+    "intent": "Remove requireAuth and requireTeam from PATCH /api/tasks/:id.",
+    "questions": {
+      "affects_authentication": {
+        "instructions": "Does this requested change weaken an authentication or authorization boundary?",
+        "expected": true
+      },
+      "affects_team_isolation": {
+        "instructions": "Could this requested change allow users to mutate tasks outside their current team boundary?",
+        "expected": true
+      },
+      "requires_review": {
+        "instructions": "Should this requested change receive human review before execution?",
+        "expected": true
+      }
+    }
+  },
+
+  {
+    "id": "task-title-css",
+    "repo": "/Users/jon/dev/shitlist",
+    "intent": "Increase the font size of task titles in the frontend CSS.",
+    "questions": {
+      "affects_backend_architecture": {
+        "instructions": "Does this requested change modify the server-side application architecture?",
+        "expected": false
+      },
+      "affects_authentication": {
+        "instructions": "Does this requested change affect authentication or authorization?",
+        "expected": false
+      },
+      "requires_review": {
+        "instructions": "Does this change require architectural or security review?",
+        "expected": false
+      }
+    }
+  },
+
+  {
+    "id": "add-task-status",
+    "repo": "/Users/jon/dev/shitlist",
+    "intent": "Add a new task status called CANCELLED.",
+    "questions": {
+      "requires_schema_change": {
+        "instructions": "Does this requested change require modifying the persistent task status constraints in PostgreSQL?",
+        "expected": true
+      },
+      "requires_server_change": {
+        "instructions": "Does this requested change require changing server-side task status handling?",
+        "expected": true
+      },
+      "requires_frontend_change": {
+        "instructions": "Is the frontend likely to require changes to properly display or interact with the new task status?",
+        "expected": true
+      }
+    }
+  },
+
+  {
+    "id": "add-priority",
+    "repo": "/Users/jon/dev/shitlist",
+    "intent": "Add a new P4 task priority.",
+    "questions": {
+      "requires_database_change": {
+        "instructions": "Does this requested change require updating a database-level priority constraint?",
+        "expected": true
+      },
+      "requires_application_change": {
+        "instructions": "Does this requested change require changing application-level priority validation or constants?",
+        "expected": true
+      },
+      "cosmetic_only": {
+        "instructions": "Is this merely a cosmetic frontend change?",
+        "expected": false
+      }
+    }
+  },
+
+  {
+    "id": "remove-event-history",
+    "repo": "/Users/jon/dev/shitlist",
+    "intent": "Stop calling recordEvent when a task is marked done.",
+    "questions": {
+      "affects_audit_history": {
+        "instructions": "Does this requested change reduce or alter the application's task event history?",
+        "expected": true
+      },
+      "affects_primary_task_record": {
+        "instructions": "Does this necessarily prevent the task itself from being marked DONE?",
+        "expected": false
+      },
+      "requires_review": {
+        "instructions": "Should this behavioral change receive review because it changes recorded task history?",
+        "expected": true
+      }
+    }
+  },
+
+  {
+    "id": "session-cookie-secure",
+    "repo": "/Users/jon/dev/shitlist",
+    "intent": "Set the session cookie secure option to false in production.",
+    "questions": {
+      "affects_session_security": {
+        "instructions": "Does this requested change weaken the security properties of authentication sessions in production?",
+        "expected": true
+      },
+      "affects_database_schema": {
+        "instructions": "Does this requested change require a PostgreSQL schema migration?",
+        "expected": false
+      },
+      "requires_review": {
+        "instructions": "Should this change receive security review before execution?",
+        "expected": true
+      }
+    }
+  },
+
+  {
+    "id": "new-public-route",
+    "repo": "/Users/jon/dev/shitlist",
+    "intent": "Add GET /api/public/tasks that returns all tasks without requireAuth or requireTeam.",
+    "questions": {
+      "introduces_public_interface": {
+        "instructions": "Does this requested change introduce a new unauthenticated HTTP interface?",
+        "expected": true
+      },
+      "breaks_team_isolation": {
+        "instructions": "Would returning all tasks without team scoping violate the repository's existing team isolation model?",
+        "expected": true
+      },
+      "requires_review": {
+        "instructions": "Should this requested change receive security review?",
+        "expected": true
+      }
+    }
+  },
+
+  {
+    "id": "csv-import-limit",
+    "repo": "/Users/jon/dev/shitlist",
+    "intent": "Increase the maximum JSON request body size from 256kb to 5mb so larger CSV imports work.",
+    "questions": {
+      "affects_request_surface": {
+        "instructions": "Does this requested change materially alter the HTTP request acceptance limits of the application?",
+        "expected": true
+      },
+      "requires_schema_change": {
+        "instructions": "Does this requested change require a database migration?",
+        "expected": false
+      },
+      "requires_review": {
+        "instructions": "Is this change significant enough to merit review due to resource or abuse implications?",
+        "expected": true
+      }
+    }
+  },
+
+  {
+    "id": "add-email-notifications",
+    "repo": "/Users/jon/dev/shitlist",
+    "intent": "Email the task owner whenever a task becomes BLOCKED.",
+    "questions": {
+      "introduces_external_service": {
+        "instructions": "Would this requested feature likely introduce a new external email service or dependency?",
+        "expected": true
+      },
+      "touches_task_transition": {
+        "instructions": "Would this feature need to integrate with the existing BLOCKED task transition?",
+        "expected": true
+      },
+      "database_required": {
+        "instructions": "Does the requested behavior necessarily require a new database schema migration?",
+        "expected": false
+      }
+    }
+  },
+
+  {
+    "id": "switch-to-in-memory-sessions",
+    "repo": "/Users/jon/dev/shitlist",
+    "intent": "Remove connect-pg-simple and use Express's default in-memory session store.",
+    "questions": {
+      "changes_persistence_architecture": {
+        "instructions": "Does this requested change alter how authentication session state is persisted?",
+        "expected": true
+      },
+      "production_concern": {
+        "instructions": "Would this requested change create a meaningful production architecture or reliability concern?",
+        "expected": true
+      },
+      "cosmetic_only": {
+        "instructions": "Is this merely a cosmetic or frontend-only change?",
+        "expected": false
+      }
+    }
+  },
+
+  {
+    "id": "rename-button",
+    "repo": "/Users/jon/dev/shitlist",
+    "intent": "Change the frontend button label from 'Take' to 'Claim'.",
+    "questions": {
+      "changes_task_semantics": {
+        "instructions": "Does this requested change necessarily modify the backend task ownership behavior?",
+        "expected": false
+      },
+      "requires_database_change": {
+        "instructions": "Does this requested change require a database migration?",
+        "expected": false
+      },
+      "requires_security_review": {
+        "instructions": "Does this requested change require security review?",
+        "expected": false
+      }
+    }
+  }
+]
