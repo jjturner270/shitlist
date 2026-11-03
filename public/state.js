@@ -1,3 +1,9 @@
+/**
+ * @typedef {{id:string,title:string,description?:string,priority:string,status:string,owner?:string|null,blockedBy?:string,doneWhen?:string,createdAt:string,updatedAt:string}} Task
+ * @typedef {{id:string|number,name:string,invite_key?:string}} Team
+ */
+
+/** @type {{board:{team:string,tasks:Task[]},filter:string,editingId:string|null,user:any,selectedId:string|null,teams:Team[],currentTeamId:string|number|null}} */
 export const state = {
   board: { team: "", tasks: [] },
   filter: "ALL",
@@ -59,10 +65,12 @@ export function ago(iso) {
   return Math.floor(hours / 24) + "d";
 }
 
+/** @param {Task[]} tasks */
 export function owners(tasks) {
   return [...new Set(tasks.map(t => t.owner).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 }
 
+/** @param {Task[]} tasks */
 export function sortedTasks(tasks) {
   return [...tasks].sort((a, b) => {
     const doneDelta = Number(a.status === "DONE") - Number(b.status === "DONE");
@@ -71,7 +79,7 @@ export function sortedTasks(tasks) {
     if (p) return p;
     const s = STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
     if (s) return s;
-    return new Date(a.createdAt) - new Date(b.createdAt);
+    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
   });
 }
 

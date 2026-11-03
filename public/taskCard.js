@@ -1,6 +1,8 @@
+/** @typedef {import("./state.js").Task} Task */
 import { esc, age } from "./state.js";
 import { renderStatusBadge } from "./statusBadge.js";
 
+/** @param {Task} task @param {string|null} selectedId */
 export function renderTaskCard(task, selectedId) {
   return '<div class="row task-row ' + (task.status === "DONE" ? "done" : "") + (task.id === selectedId ? " selected" : "") + '" data-id="' + esc(task.id) + '">' +
     '<div class="priority ' + esc(task.priority.toLowerCase()) + '">' + esc(task.priority) + '</div>' +

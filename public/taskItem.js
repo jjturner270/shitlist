@@ -1,5 +1,7 @@
+/** @typedef {import("./state.js").Task} Task */
 import { esc } from "./state.js";
 
+/** @param {Task} task @param {"blocked"|"unowned"} type */
 export function renderTaskItem(task, type) {
   if (type !== "blocked" && type !== "unowned") throw new Error("Unknown task item type");
   const name = type === "blocked"
