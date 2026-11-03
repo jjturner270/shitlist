@@ -1,9 +1,15 @@
-import { state, esc, age, owners, sortedTasks, visibleTasks, orderedTaskIds, ACTION_DEFS } from "./state.js";
+import { state, esc, owners, sortedTasks, visibleTasks, orderedTaskIds } from "./state.js";
 import {
-  runAction, loadEvents, loadTeams, loadBoard,
+  runAction, loadAuth, loadTeams, loadBoard,
   handleLogin, handleRegister, logout, switchTeam, joinTeam,
   copyInviteKey, importCsv, persistBlock, submitTask, deleteTask, renameTeam
 } from "./services.js";
+
+import { renderQueueColumn } from "./queueColumn.js";
+import { renderTaskItem } from "./taskItem.js";
+import { renderEmpty } from "./emptyState.js";
+import { setForm, toggleBlockedField, openCreate, renderActions, openTask, closeDialog } from "./modal.js";
+export { setForm, toggleBlockedField, openCreate, renderActions, openTask, closeDialog } from "./modal.js";
 
 export const els = {
   authOverlay: document.querySelector("#authOverlay"),
@@ -88,22 +94,7 @@ export function renderFilters() {
 
 export function renderRows() {
   const tasks = sortedTasks(visibleTasks());
-  if (!tasks.length) {
-    els.taskRows.innerHTML = '<div class="empty-state">nothing here. suspiciously peaceful.</div>';
-    return;
-  }
-  els.taskRows.innerHTML = tasks.map(task =>
-    '<div class="row task-row ' + (task.status === "DONE" ? "done" : "") + (task.id === state.selectedId ? " selected" : "") + '" data-id="' + esc(task.id) + '">' +
-      '<div class="priority ' + task.priority.toLowerCase() + '">' + esc(task.priority) + '</div>' +
-      '<div>' +
-        '<div class="task-title">' + esc(task.title) + '</div>' +
-        '<div class="task-meta">' + (task.status === "BLOCKED" && task.blockedBy ? "blocked: " + esc(task.blockedBy) : esc(task.description || task.doneWhen || "")) + '</div>' +
-      '</div>' +
-      '<div class="owner ' + (task.owner ? "" : "empty") + '">' + esc(task.owner || "UNOWNED") + '</div>' +
-      '<div><span class="status ' + task.status.toLowerCase() + '">' + esc(task.status) + '</span></div>' +
-      '<div class="age">' + age(task.createdAt) + '</div>' +
-    '</div>'
-  ).join("");
+  els.taskRows.innerHTML = renderQueueColumn(tasks, state.selectedId);
   els.taskRows.querySelectorAll(".task-row").forEach(row => {
     row.addEventListener("click", () => {
       console.log('[#taskRows] clicked -> openTask()');
@@ -116,12 +107,7 @@ export function renderRows() {
 export function renderSide() {
   const blockers = sortedTasks(state.board.tasks.filter(t => t.status === "BLOCKED"));
   els.blockers.innerHTML = blockers.length
-    ? blockers.map(t =>
-        '<div class="item blocked" data-id="' + esc(t.id) + '" role="button" tabindex="0">' +
-          '<div class="name">' + esc(t.owner || "UNOWNED") + ' -> ' + esc(t.title) + '</div>' +
-          '<div class="detail">' + esc(t.blockedBy || "blocked, apparently") + '</div>' +
-        '</div>'
-      ).join("")
+    ? blockers.map(t => renderTaskItem(t, "blocked")).join("")
     : '<div>none</div>';
   els.blockers.querySelectorAll(".item[data-id]").forEach(item => {
     item.addEventListener("click", () => {
@@ -138,12 +124,7 @@ export function renderSide() {
 
   const unowned = sortedTasks(state.board.tasks.filter(t => !t.owner && t.status !== "DONE"));
   els.unowned.innerHTML = unowned.length
-    ? unowned.map(t =>
-        '<div class="item unowned" data-id="' + esc(t.id) + '" role="button" tabindex="0">' +
-          '<div class="name">' + esc(t.priority) + ' -> ' + esc(t.title) + '</div>' +
-          '<div class="detail">needs an owner</div>' +
-        '</div>'
-      ).join("")
+    ? unowned.map(t => renderTaskItem(t, "unowned")).join("")
     : '<div>none</div>';
   els.unowned.querySelectorAll(".item[data-id]").forEach(item => {
     item.addEventListener("click", () => {
@@ -201,75 +182,6 @@ export function render() {
   renderFilters();
   renderRows();
   renderSide();
-}
-
-export function setForm(task) {
-  task = task || {};
-  els.form.elements.title.value = task.title || "";
-  els.form.elements.priority.value = task.priority || "P2";
-  els.form.elements.status.value = task.status || "READY";
-  els.form.elements.owner.value = task.owner || "";
-  els.form.elements.description.value = task.description || "";
-  els.form.elements.doneWhen.value = task.doneWhen || "";
-  els.form.elements.blockedBy.value = task.blockedBy || "";
-  toggleBlockedField();
-}
-
-export function toggleBlockedField() {
-  els.blockedByWrap.hidden = false;
-}
-
-export function openCreate(title) {
-  state.editingId = null;
-  els.dialogId.textContent = "NEW";
-  els.dialogTitle.textContent = "Add work";
-  els.deleteTask.hidden = true;
-  els.taskActions.hidden = true;
-  els.taskHistory.hidden = true;
-  setForm({ title: title || "" });
-  els.dialog.showModal();
-  queueMicrotask(() => {
-    const target = title ? els.form.elements.priority : els.form.elements.title;
-    target.focus();
-  });
-}
-
-export function renderActions(task) {
-  const visible = ACTION_DEFS.filter(d => d.show(task));
-  if (!visible.length) {
-    els.taskActions.hidden = true;
-    return;
-  }
-  els.taskActions.hidden = false;
-  els.taskActions.innerHTML = visible
-    .map(d => '<button type="button" class="act ' + d.act + '" data-act="' + d.act + '">' + d.label + '</button>')
-    .join("");
-  els.taskActions.querySelectorAll("button").forEach(btn => {
-    btn.addEventListener("click", () => {
-      console.log('[#taskActions] clicked -> runAction()');
-      runAction(btn.dataset.act, task);
-    });
-  });
-}
-
-export function openTask(id) {
-  const task = state.board.tasks.find(t => t.id === id);
-  if (!task) return;
-  state.editingId = id;
-  state.selectedId = id;
-  els.dialogId.textContent = "#" + id;
-  els.dialogTitle.textContent = task.title;
-  els.deleteTask.hidden = false;
-  els.taskHistory.hidden = true;
-  setForm(task);
-  renderActions(task);
-  els.dialog.showModal();
-  loadEvents(id);
-}
-
-export function closeDialog() {
-  els.dialog.close();
-  state.editingId = null;
 }
 
 export function moveSelection(dir) {
@@ -454,7 +366,7 @@ export async function init() {
   } catch (err) {
     console.error(err);
     if (els.taskRows) {
-      els.taskRows.innerHTML = '<div class="empty-state">could not start: ' + esc(err.message) + '</div>';
+      els.taskRows.innerHTML = renderEmpty("could not start: " + err.message);
     }
   }
 }

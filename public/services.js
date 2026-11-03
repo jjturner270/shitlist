@@ -1,4 +1,5 @@
 import { state, esc, ago, EVENT_LABELS } from "./state.js";
+import { renderEmpty } from "./emptyState.js";
 import { els, render, setForm, renderActions, closeDialog, showApp, showAuth, renderTeamSwitcher, renderInviteKey } from "./components.js";
 
 export async function api(url, options = {}) {
@@ -176,7 +177,7 @@ export async function loadBoard() {
       showAuth();
     } else {
       console.error(err);
-      els.taskRows.innerHTML = '<div class="empty-state">could not load the board: ' + esc(err.message) + '</div>';
+      els.taskRows.innerHTML = renderEmpty("could not load the board: " + err.message);
     }
   }
 }
